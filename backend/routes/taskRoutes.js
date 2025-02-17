@@ -2,6 +2,7 @@ import express from "express";
 import { v4 as uuidv4 } from "uuid";
 import pool from "../config/db.js";
 const router = express.Router();
+import db from "../config/db.js";
 
 // In-memory storage for tasks and chunks
 let tasks = [];
@@ -69,37 +70,49 @@ router.delete("/tasks/:id", (req, res) => {
 });
 
 // Create a new chunk
-router.post("/chunks", (req, res) => {
+router.post("/chunks", async (req, res) => {
     const { name, taskIds } = req.body;
     if (!name || !Array.isArray(taskIds) || taskIds.length === 0) {
         return res.status(400).json({ message: "Invalid chunk data" });
     }
-    const newChunk = {
-        id: uuidv4(),
-        name,
-        tasks: taskIds,
-    };
-    chunks.push(newChunk);
-    taskIds.forEach((taskId) => {
-        const task = tasks.find((task) => task.id === taskId);
-        if (task) task.chunkId = newChunk.id;
-    });
-    res.status(201).json(newChunk);
+
+    try {
+        const [newChunk] = await db("chunks").insert({ name }).returning("*");
+
+        // Update tasks to be part of this chunk
+        await db("tasks").whereIn("id", taskIds).update({ chunk_id: newChunk.id });
+
+        res.status(201).json(newChunk);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Database error" });
+    }
 });
 
 // Retrieve all chunks
-router.get("/chunks", (req, res) => {
-    res.json(chunks);
+router.get("/chunks", async (req, res) => {
+    try {
+        const chunks = await db("chunks").select("*");
+        res.json(chunks);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Database error" });
+    }
 });
 
 // Start a chunk (simulate task focus mode)
-router.post("/chunks/:id/start", (req, res) => {
+router.post("/chunks/:id/start", async (req, res) => {
     const { id } = req.params;
-    const chunk = chunks.find((chunk) => chunk.id === id);
-    if (!chunk) {
-        return res.status(404).json({ message: "Chunk not found" });
+    try {
+        const chunk = await db("chunks").where("id", id).first();
+        if (!chunk) {
+            return res.status(404).json({ message: "Chunk not found" });
+        }
+        res.json({ message: "Chunk started", chunk });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Database error" });
     }
-    res.json({ message: "Chunk started", chunk });
 });
 
 export default router;
