@@ -1,6 +1,6 @@
 import express from "express";
 import { v4 as uuidv4 } from "uuid";
-
+import pool from "../config/db.js";
 const router = express.Router();
 
 // In-memory storage for tasks and chunks
@@ -8,29 +8,42 @@ let tasks = [];
 let chunks = [];
 
 // Create a new task
-router.post("/tasks", (req, res) => {
+
+
+router.post("/tasks", async (req, res) => {
     const { title, description, schedule } = req.body;
     if (!title || (schedule !== "today" && schedule !== "tomorrow")) {
         return res.status(400).json({ message: "Invalid task data" });
     }
-    const newTask = {
-        id: uuidv4(),
-        title,
-        description: description || "",
-        schedule,
-        status: "pending",
-        chunkId: null,
-    };
-    tasks.push(newTask);
-    res.status(201).json(newTask);
+    
+    try {
+        const result = await pool.query(
+            "INSERT INTO tasks (title, description, schedule) VALUES ($1, $2, $3) RETURNING *",
+            [title, description || "", schedule]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Database error" });
+    }
 });
 
 // Retrieve tasks for today and tomorrow
-router.get("/tasks", (req, res) => {
-    res.json({
-        today: tasks.filter((task) => task.schedule === "today" && task.status === "pending"),
-        tomorrow: tasks.filter((task) => task.schedule === "tomorrow" && task.status === "pending"),
-    });
+router.get("/tasks", async (req, res) => {
+    try {
+        const result = await pool.query(
+            "SELECT * FROM tasks WHERE status = 'pending'"
+        );
+        const tasks = result.rows;
+
+        res.json({
+            today: tasks.filter((task) => task.schedule === "today"),
+            tomorrow: tasks.filter((task) => task.schedule === "tomorrow"),
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Database error" });
+    }
 });
 
 // Update a task (e.g., mark as completed, change schedule)
