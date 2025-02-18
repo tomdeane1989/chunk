@@ -2,6 +2,8 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import taskRoutes from "./routes/taskRoutes.js";
+import "./scheduler/dailyReset.js"; // This starts the cron job.
+import { checkAndRunReset } from "./scheduler/dailyReset.js";
 
 dotenv.config();
 
@@ -13,4 +15,8 @@ app.use(express.json());
 app.use("/api", taskRoutes);
 
 const PORT = process.env.PORT || 5002;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, async () => {
+    console.log(`Server running on port ${PORT}`);
+    // At server start, check if today's reset has run; if not, run it.
+    await checkAndRunReset();
+  });
